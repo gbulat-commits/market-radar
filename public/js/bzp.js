@@ -130,7 +130,7 @@ const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const isoOrNull = (v) => {
   const s = str(v);
   if (!s) return null;
-  const t = Date.parse(s);
+  const t = Date.parse(s.replace(/(\.\d{3})\d+/, '$1')); // API sends 7 fractional digits
   return Number.isFinite(t) ? new Date(t).toISOString() : null;
 };
 
@@ -168,10 +168,10 @@ export function mergeUnique(lists) {
   return [...byId.values()];
 }
 
-// Open = deadline in the future. Without a deadline we cannot tell, so keep it
-// (shown as "Нет данных" and sorted last).
+// Open = deadline in the future. Without a deadline we cannot confirm it is open,
+// so such notices are not shown.
 export function isOpen(n, now = Date.now()) {
-  return !n.deadline || Date.parse(n.deadline) > now;
+  return !!n.deadline && Date.parse(n.deadline) > now;
 }
 
 export function byDeadline(a, b) {
@@ -196,7 +196,22 @@ export function buildUrl(cpv, from, to) {
   return `${API_URL}?${p}`;
 }
 
-async function getJson(url, { fetchImpl, timeoutMs, signal }) {
+// Shared limit for all requests, including date-range splits.
+function semaphore(limit) {
+  let active = 0;
+  const queue = [];
+  return async (fn) => {
+    if (active >= limit) await new Promise((r) => queue.push(r));
+    active++;
+    try { return await fn(); } finally { active--; queue.shift()?.(); }
+  };
+}
+
+async function getJson(url, opts) {
+  return opts.limit ? opts.limit(() => getJsonNow(url, opts)) : getJsonNow(url, opts);
+}
+
+async function getJsonNow(url, { fetchImpl, timeoutMs, signal }) {
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort();
   if (signal?.aborted) throw new SourceError('aborted', 'Запрос отменён');
@@ -274,7 +289,7 @@ export async function fetchTenders({
   const { from, to } = dateRange(now);
   const stop = new AbortController();
   signal?.addEventListener('abort', () => stop.abort(), { once: true });
-  const opts = { fetchImpl, timeoutMs, retries, signal: stop.signal };
+  const opts = { fetchImpl, timeoutMs, retries, signal: stop.signal, limit: semaphore(concurrency) };
   let done = 0;
   const results = await pool(codes, concurrency, async (cpv) => {
     if (stop.signal.aborted) return { cpv, error: new SourceError('aborted', 'Запрос отменён') };

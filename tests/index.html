@@ -75,6 +75,8 @@
       const open = merged.filter((x) => bzp.isOpen(x)).sort(bzp.byDeadline).map((x) => x.id);
       assert(eq(open, ['test-0001', 'test-0003', 'test-0002']), open.join());
       const noDl = { id: 'x', deadline: null };
+      assert(!bzp.isOpen(noDl), 'no deadline is not shown as open');
+      assert(bzp.normalizeNotice({ objectId: 'p', orderObject: 't', publicationDate: '2026-10-01T06:00:38.4916884Z' }).published === '2026-10-01T06:00:38.491Z');
       assert(eq([noDl, n[1], n[0]].sort(bzp.byDeadline).map((x) => x.id), ['test-0001', 'test-0002', 'x']), 'missing deadline sorted last');
     });
 

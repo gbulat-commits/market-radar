@@ -17,7 +17,7 @@ const state = {
 function loadSaved() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (s && Array.isArray(s.items) && s.fetchedAt) return s;
+    if (s && Array.isArray(s.items) && s.fetchedAt && s.range?.from && s.range?.to && s.items.every((i) => i && i.id && i.title)) return s;
   } catch { /* storage blocked or corrupt */ }
   return null;
 }
@@ -240,3 +240,4 @@ state.data = simulateMode ? null : loadSaved();
 renderLastChecked();
 render();
 if (!state.data) refresh(); // first visit: load once automatically
+setInterval(() => { if (!state.loading) render(); }, 60000); // deadlines move while the tab stays open

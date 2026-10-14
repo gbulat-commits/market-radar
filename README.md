@@ -1,3 +1,16 @@
+# Market Radar — радар IT-закупок в Польше
+
+Одна страница с актуальными публичными закупками на сайты и приложения из [Biuletyn Zamówień Publicznych](https://ezamowienia.gov.pl/mo-client-board/bzp/list) (e-Zamówienia): предмет, заказчик, срок подачи, оценочная сумма (если указана в объявлении) и ссылка на первоисточник. Кнопка «Обновить данные» заново запрашивает BZP прямо из браузера.
+
+- **Стек:** статичные HTML/CSS/JS без сборки и зависимостей, файлы сайта в `public/`, деплой на Vercel (`vercel.json` → `outputDirectory: public`).
+- **Источник:** `GET https://ezamowienia.gov.pl/mo-board/api/v1/notice`, без ключа, CORS открыт. Объявления о закупке за 30 дней по 15 кодам CPV; дубли убираются; показываются только закупки с ещё не истёкшим сроком.
+- **Код:** `public/js/bzp.js` — адаптер источника (запросы, разбор, сумма, дедупликация); `public/js/app.js` — интерфейс; `public/js/simulate.js` — тестовый режим `?simulate=ok|empty|network|http|format|partial|timeout` с явно помеченными тестовыми данными.
+- **Переменные окружения:** не нужны.
+
+Локально: `python -m http.server 5173` в корне проекта, затем открыть `http://localhost:5173/public/` (приложение) и `http://localhost:5173/tests/` (тесты адаптера в браузере).
+
+---
+
 # Workshop Starter v0.2.8
 
 > Проверено 14.10.2026: Windows — Claude Code и Codex; macOS — Claude Code (установка, страница, commit, push на GitHub); Vercel — живой деплой и закрытые служебные файлы; отладка по фактам — Claude Code (живой разбор ошибки) и Codex (выбор skill) на Windows. Codex на macOS не проверялся.
