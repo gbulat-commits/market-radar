@@ -79,7 +79,7 @@ function decodeEntities(s) {
 // Polish number: "264000,00", "1 234 567,89", "1.234.567,89", "431200"
 export function parsePolishNumber(raw) {
   if (typeof raw !== 'string') return null;
-  let s = raw.replace(/[\s00a0]/g, '');
+  let s = raw.replace(/[\s\u00a0]/g, '');
   if (!/^\d[\d.,]*$/.test(s)) return null;
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
   else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
