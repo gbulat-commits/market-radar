@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Market Radar — adapter tests</title>
+  <style>body{font:14px/1.5 system-ui,sans-serif;margin:24px}.pass{color:#047857}.fail{color:#b91c1c;font-weight:600}#sum{font-size:18px;font-weight:700}</style>
+</head>
+<body>
+  <!-- Open via a local server from the project root: /tests/index.html. Uses TEST data only. -->
+  <div id="sum">running…</div>
+  <ol id="out"></ol>
+  <script type="module">
+    import * as bzp from '../public/js/bzp.js';
+    import { testNotices, simulatedFetch } from '../public/js/simulate.js';
+
+    const out = document.getElementById('out');
+    let pass = 0, fail = 0;
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    async function t(name, fn) {
+      try { await fn(); pass++; out.insertAdjacentHTML('beforeend', `<li class="pass">PASS ${name}</li>`); }
+      catch (e) { fail++; out.insertAdjacentHTML('beforeend', `<li class="fail">FAIL ${name}: ${e.message}</li>`); }
+    }
+    const assert = (c, m) => { if (!c) throw new Error(m || 'assertion failed'); };
+
+    await t('parsePolishNumber', () => {
+      assert(bzp.parsePolishNumber('264000,00') === 264000);
+      assert(bzp.parsePolishNumber('1 234 567,89') === 1234567.89);
+      assert(bzp.parsePolishNumber('1.234.567,89') === 1234567.89);
+      assert(bzp.parsePolishNumber('431200') === 431200);
+      assert(bzp.parsePolishNumber('abc') === null);
+    });
+
+    await t('extractAmount: real BZP form variants', () => {
+      const a = bzp.extractAmount('4.1.4.) X: Nie 4.1.5.) Wartość zamówienia: 329962,40 PLN 4.1.8.) Możliwe jest');
+      assert(eq(a, { value: 329962.4, currency: 'PLN', kind: 'estimate_net', source: 'text' }), JSON.stringify(a));
+      const b = bzp.extractAmount('Tak 4.1.5.) Łączna wartość poszczególnych części zamówienia: 725200,25 PLN 4.1.6.) Wartość zamówienia stanowiącego');
+      assert(b.value === 725200.25 && b.currency === 'PLN');
+      const c = bzp.extractAmount('Tak 4.1.6.) Wartość zamówienia stanowiącego przedmiot tego postępowania (bez VAT): 162775,52 4.1.8.) Możliwe');
+      assert(c.value === 162775.52 && c.currency === null, 'currency must stay null when not stated');
+      const d = bzp.extractAmount('4.1.5.) Wartość zamówienia: 1 234 567,89 zł 4.1.8.)');
+      assert(d.value === 1234567.89 && d.currency === 'PLN', JSON.stringify(d));
+    });
+
+    await t('extractAmount: ignores lot values, guarantees and missing', () => {
+      assert(bzp.extractAmount('4.2.5.) Wartość części: 102439,02 PLN') === null);
+      assert(bzp.extractAmount('ubezpieczenia OC na kwotę nie niższą niż 1 000 000,00 zł') === null);
+      assert(bzp.extractAmount('') === null);
+    });
+
+    await t('extractDescription stops at next section', () => {
+      const d = bzp.extractDescription('4.2.2.) Krótki opis przedmiotu zamówienia: Budowa portalu dla miasta. 4.2.3.) Główny kod CPV');
+      assert(d === 'Budowa portalu dla miasta.', d);
+    });
+
+    await t('topicMatches incl. Polish inflection, ignores e-Zamówienia boilerplate', () => {
+      assert(eq(bzp.topicMatches('Wykonanie nowej strony internetowej', ''), ['strona internetowa']));
+      assert(eq(bzp.topicMatches('Wdrożenie platformy multiportalowej', ''), ['portal', 'platforma']));
+      assert(eq(bzp.topicMatches('Rozwój e-usług publicznych', ''), ['e-usługi']));
+      assert(eq(bzp.topicMatches('Dostawa licencji', 'oferty składa się za pośrednictwem platformy e-Zamówienia'), []));
+    });
+
+    await t('normalizeNotice: missing fields stay null, link built from objectId', () => {
+      const [, two, three] = testNotices().map(bzp.normalizeNotice);
+      assert(two.city === null && two.province === null && two.amount === null);
+      assert(three.buyer === null && three.published === null);
+      assert(three.amount.value === 241112.5 && three.amount.currency === null);
+      assert(two.url === bzp.NOTICE_URL + 'test-0002');
+      assert(bzp.normalizeNotice({ orderObject: 'no id' }) === null);
+    });
+
+    await t('mergeUnique + isOpen + byDeadline', () => {
+      const n = testNotices().map(bzp.normalizeNotice);
+      const merged = bzp.mergeUnique([n, [n[0]], n.slice(1, 2)]);
+      assert(merged.length === 4, 'dedup by id');
+      const open = merged.filter((x) => bzp.isOpen(x)).sort(bzp.byDeadline).map((x) => x.id);
+      assert(eq(open, ['test-0001', 'test-0003', 'test-0002']), open.join());
+      const noDl = { id: 'x', deadline: null };
+      assert(eq([noDl, n[1], n[0]].sort(bzp.byDeadline).map((x) => x.id), ['test-0001', 'test-0002', 'x']), 'missing deadline sorted last');
+    });
+
+    await t('dateRange is 30 days in Warsaw time', () => {
+      const r = bzp.dateRange(new Date('2026-10-14T23:30:00Z')); // 01:30 on 15.10 in Warsaw
+      assert(r.to === '2026-10-15' && r.from === '2026-09-15', JSON.stringify(r));
+    });
+
+    await t('fetchTenders ok: dedups across CPV codes', async () => {
+      delete simulatedFetch.calls;
+      const r = await bzp.fetchTenders({ fetchImpl: simulatedFetch('ok') });
+      assert(r.items.length === 4 && r.rawCount === 5, `${r.items.length}/${r.rawCount}`);
+    });
+
+    for (const mode of ['network', 'http', 'format', 'partial', 'timeout']) {
+      await t(`fetchTenders ${mode}: rejects whole refresh`, async () => {
+        delete simulatedFetch.calls;
+        const f = simulatedFetch(mode);
+        await bzp.fetchTenders({ fetchImpl: f, timeoutMs: 300, retries: 0 }); // first call succeeds
+        let err;
+        try { await bzp.fetchTenders({ fetchImpl: f, timeoutMs: 300, retries: 0 }); } catch (e) { err = e; }
+        assert(err instanceof bzp.SourceError, 'expected SourceError, got ' + err);
+        const kinds = { network: 'network', http: 'http', format: 'format', partial: 'network', timeout: 'timeout' };
+        assert(err.kind === kinds[mode], err.kind + ': ' + err.message);
+        if (mode === 'partial') assert(eq(err.failedCodes, ['72413000-8']), err.failedCodes);
+      });
+    }
+
+    await t('fetchTenders: full page splits the date range', async () => {
+      const seen = [];
+      const big = (n) => Array.from({ length: n }, (_, i) => ({ objectId: `id-${seen.length}-${i}`, orderObject: 'x' }));
+      const f = async (url) => {
+        const p = new URL(url).searchParams;
+        seen.push(p.get('PublicationDateFrom') + '..' + p.get('PublicationDateTo'));
+        const whole = seen.length === 1;
+        return new Response(JSON.stringify(big(whole ? bzp.PAGE_SIZE : 10)), { headers: { 'Content-Type': 'application/json' } });
+      };
+      const r = await bzp.fetchTenders({ fetchImpl: f, codes: ['72000000-5'], now: new Date('2026-10-14T10:00:00Z') });
+      assert(seen.length === 3 && r.items.length === 20, seen.join(' | '));
+      assert(seen[1] === '2026-09-14..2026-09-29' && seen[2] === '2026-09-30..2026-10-14', seen.join(' | '));
+    });
+
+    await t('fetchTenders: retries once on network error', async () => {
+      let n = 0;
+      const f = async () => { if (n++ === 0) throw new TypeError('Failed to fetch'); return new Response('[]'); };
+      const r = await bzp.fetchTenders({ fetchImpl: f, codes: ['72000000-5'] });
+      assert(n === 2 && r.items.length === 0);
+    });
+
+    document.getElementById('sum').innerHTML = `<span class="${fail ? 'fail' : 'pass'}">${pass} passed, ${fail} failed</span>`;
+    document.title = `${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail}`;
+  </script>
+</body>
+</html>
