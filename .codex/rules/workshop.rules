@@ -1,0 +1,9 @@
+# Workshop Starter: irreversible Git commands are blocked; a regular push needs approval.
+# Loaded only when the project is trusted, at session start.
+# The strictest matching rule wins, so "prompt" here overrides a personal saved
+# "allow" for git push. In "Approve for me" the automatic reviewer checks each push;
+# in "Ask for approval" the user does.
+prefix_rule(pattern=["git", "push", "--force"], decision="forbidden")
+prefix_rule(pattern=["git", "push", "-f"], decision="forbidden")
+prefix_rule(pattern=["git", "reset", "--hard"], decision="forbidden")
+prefix_rule(pattern=["git", "push"], decision="prompt")

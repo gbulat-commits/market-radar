@@ -1,0 +1,39 @@
+# Local secrets; publish only placeholder examples.
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.key
+*.pem
+credentials*
+secrets*
+
+# Account sessions and their journals.
+*.session
+*.session-journal
+
+# Local Python environments and caches.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Dependencies and generated files.
+node_modules/
+dist/
+build/
+.next/
+.vercel/
+coverage/
+
+# Logs and private local materials.
+logs/
+*.log
+private/
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/*.lock
+
+# OS metadata.
+.DS_Store
+Thumbs.db

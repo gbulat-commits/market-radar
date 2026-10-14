@@ -1,0 +1,8 @@
+# Project baseline. No machine-specific paths, model ID or broad allow rules.
+# Confirm that the project is trusted and these settings are actually loaded.
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false
